@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -6,117 +8,310 @@ void main() {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      debugShowCheckedModeBanner: false,
+      title: 'Device Dashboard',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const DashboardScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
+// Dummy Device model
+class Device {
+  final String id;
+  final String name;
+  final String imageUrl;
+  String ocrValue;
+  double cpu;
+  double battery;
+  double temperature;
+  List<PastTelemetry> pastTelemetry;
+  Device({
+    required this.id,
+    required this.name,
+    required this.imageUrl,
+    required this.ocrValue,
+    required this.cpu,
+    required this.battery,
+    required this.temperature,
+    required this.pastTelemetry,
+  });
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class PastTelemetry {
+  final DateTime timestamp;
+  final String ocrValue;
+  final double cpu;
+  final double battery;
+  final double temperature;
+  PastTelemetry(
+      {required this.timestamp,
+      required this.ocrValue,
+      required this.cpu,
+      required this.battery,
+      required this.temperature});
+}
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  List<Device> _devices = [];
+  String _search = '';
+  Timer? _timer;
+  final Random _rand = Random();
+
+  @override
+  void initState() {
+    super.initState();
+    _devices = List.generate(9, (i) {
+      return Device(
+        id: 'PHN${i + 1}',
+        name: 'Phone ${i + 1}',
+        imageUrl:
+            'https://dummyimage.com/300x600/183153/ffffff&text=Phone+${i + 1}',
+        ocrValue: 'VAL${1000 + i}',
+        cpu: 10 + _rand.nextInt(60) + _rand.nextDouble(), // 10-70
+        battery: 30 + _rand.nextInt(70) + _rand.nextDouble(), // 30-100
+        temperature: 27 + _rand.nextInt(15) + _rand.nextDouble(), // 27-42
+        pastTelemetry: [],
+      );
+    }).map((d) {
+      // Seed with dummy last 5 entries
+      d.pastTelemetry = List.generate(5, (j) {
+        return PastTelemetry(
+          timestamp: DateTime.now()
+              .subtract(Duration(seconds: (5 - j) * 5)),
+          ocrValue: 'VAL${1000 + int.parse(d.id.replaceAll(RegExp(r'[^0-9]'), '')) + j}',
+          cpu: (d.cpu + _rand.nextDouble() * 10 - 5).clamp(10, 90),
+          battery: (d.battery + _rand.nextDouble() * 10 - 5).clamp(10, 100),
+          temperature: (d.temperature + _rand.nextDouble() * 4 - 2).clamp(25, 45),
+        );
+      });
+      return d;
+    }).toList();
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      setState(_simulateUpdate);
     });
   }
 
   @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _simulateUpdate() {
+    for (var d in _devices) {
+      d.ocrValue = 'VAL${(1000 + _rand.nextInt(9000))}';
+      d.cpu = (d.cpu + _rand.nextDouble() * 14 - 7).clamp(0.0, 100.0);
+      d.battery = (d.battery + _rand.nextDouble() * 3 - 1.5).clamp(0.0, 100.0);
+      d.temperature =
+          (d.temperature + _rand.nextDouble() * 2 - 1).clamp(20.0, 50.0);
+      d.pastTelemetry.add(PastTelemetry(
+        timestamp: DateTime.now(),
+        ocrValue: d.ocrValue,
+        cpu: d.cpu,
+        battery: d.battery,
+        temperature: d.temperature,
+      ));
+      if (d.pastTelemetry.length > 5) d.pastTelemetry.removeAt(0);
+    }
+  }
+
+  List<Device> get filteredDevices {
+    if (_search.trim().isEmpty) {
+      return _devices;
+    }
+    return _devices.where((d) =>
+        d.name.toLowerCase().contains(_search.toLowerCase()) ||
+        d.id.toLowerCase().contains(_search.toLowerCase())).toList();
+  }
+
+  Color statusColor(double value, String key) {
+    // green, orange, red for good, warning, danger
+    if (key == 'cpu') {
+      if (value < 60) return Colors.green;
+      if (value < 85) return Colors.orange;
+      return Colors.red;
+    }
+    if (key == 'battery') {
+      if (value > 50) return Colors.green;
+      if (value > 20) return Colors.orange;
+      return Colors.red;
+    }
+    if (key == 'temp') {
+      if (value < 38) return Colors.green;
+      if (value < 43) return Colors.orange;
+      return Colors.red;
+    }
+    return Colors.grey;
+  }
+
+  void _showDetail(Device device) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 32),
+        child: Padding(
+          padding: const EdgeInsets.all(18.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${device.name} (${device.id})',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+              ),
+              const SizedBox(height: 13),
+              AspectRatio(
+                aspectRatio: 1 / 2,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(device.imageUrl, fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text('Latest OCR: ${device.ocrValue}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _statusBox('CPU', device.cpu, statusColor(device.cpu, 'cpu'), '%'),
+                  const SizedBox(width: 10),
+                  _statusBox('BAT', device.battery, statusColor(device.battery, 'battery'), '%'),
+                  const SizedBox(width: 10),
+                  _statusBox('TEMP', device.temperature, statusColor(device.temperature, 'temp'), '°C'),
+                ],
+              ),
+              const SizedBox(height: 19),
+              const Text('Past telemetry (latest 5)', style: TextStyle(fontWeight: FontWeight.w500)),
+              ...device.pastTelemetry.reversed.map((tele) =>
+                  ListTile(
+                    dense: true,
+                    leading: Icon(Icons.timeline, color: Colors.blue.shade800, size: 22),
+                    title: Text('${tele.timestamp.hour}:${tele.timestamp.minute.toString().padLeft(2, '0')}'),
+                    subtitle: Text('OCR: ${tele.ocrValue} | CPU: ${tele.cpu.toStringAsFixed(1)}% | BAT: ${tele.battery.toStringAsFixed(1)}% | TEMP: ${tele.temperature.toStringAsFixed(1)}°C'),
+                  )
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusBox(String label, double value, Color color, String suffix) {
+    return Row(
+      children: [
+        Icon(Icons.fiber_manual_record, color: color, size: 14),
+        const SizedBox(width: 2),
+        Text(
+          '$label: ${value.toStringAsFixed(1)}$suffix',
+          style: TextStyle(color: color, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Device Telemetry Dashboard'),
+        elevation: 0,
+        backgroundColor: Colors.blue.shade50,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 14),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+          children: [
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                hintText: "Search by device name or ID",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                isDense: true,
+                fillColor: Colors.grey.shade50,
+                filled: true,
+              ),
+              onChanged: (v) => setState(() => _search = v),
+            ),
+            const SizedBox(height: 18),
+            Expanded(
+              child: GridView.builder(
+                itemCount: filteredDevices.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 18,
+                  crossAxisSpacing: 18,
+                  childAspectRatio: 0.74,
+                ),
+                itemBuilder: (_, idx) {
+                  final device = filteredDevices[idx];
+                  return InkWell(
+                    onTap: () => _showDetail(device),
+                    borderRadius: BorderRadius.circular(18),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeInOut,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                              color: Colors.blueGrey.withOpacity(0.10),
+                              blurRadius: 9,
+                              offset: const Offset(2, 2))
+                        ],
+                        border: Border.all(
+                            color: Colors.blue[100]!, width: 1.2),
+                      ),
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(device.imageUrl, fit: BoxFit.cover),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '${device.name} (${device.id})',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text('OCR: ${device.ocrValue}',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Colors.black87)),
+                          const SizedBox(height: 8),
+                          _statusBox('CPU', device.cpu, statusColor(device.cpu, 'cpu'), '%'),
+                          const SizedBox(height: 3),
+                          _statusBox('BAT', device.battery, statusColor(device.battery, 'battery'), '%'),
+                          const SizedBox(height: 3),
+                          _statusBox('TEMP', device.temperature, statusColor(device.temperature, 'temp'), '°C'),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
