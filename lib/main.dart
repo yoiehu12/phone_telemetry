@@ -69,6 +69,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _search = '';
   Timer? _timer;
   final Random _rand = Random();
+  int? _sortColumnIndex;
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -78,7 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         id: 'PHN${i + 1}',
         name: 'Phone ${i + 1}',
         imageUrl:
-            'https://dummyimage.com/300x600/183153/ffffff&text=Phone+${i + 1}',
+            'https://dummyimage.com/128x200/183153/ffffff&text=Phone+${i + 1}',
         ocrValue: 'VAL${1000 + i}',
         cpu: 10 + _rand.nextInt(60) + _rand.nextDouble(), // 10-70
         battery: 30 + _rand.nextInt(70) + _rand.nextDouble(), // 30-100
@@ -126,15 +128,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ));
       if (d.pastTelemetry.length > 5) d.pastTelemetry.removeAt(0);
     }
+    // Resort after update
+    if (_sortColumnIndex != null) {
+      _sortDevices(_sortColumnIndex!, _sortAsc);
+    }
   }
 
   List<Device> get filteredDevices {
-    if (_search.trim().isEmpty) {
-      return _devices;
+    List<Device> base = _devices;
+    if (_search.trim().isNotEmpty) {
+      base = base
+          .where((d) =>
+              d.name.toLowerCase().contains(_search.toLowerCase()) ||
+              d.id.toLowerCase().contains(_search.toLowerCase()))
+          .toList();
     }
-    return _devices.where((d) =>
-        d.name.toLowerCase().contains(_search.toLowerCase()) ||
-        d.id.toLowerCase().contains(_search.toLowerCase())).toList();
+    return base;
   }
 
   Color statusColor(double value, String key) {
@@ -164,45 +173,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 32),
         child: Padding(
           padding: const EdgeInsets.all(18.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '${device.name} (${device.id})',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-              ),
-              const SizedBox(height: 13),
-              AspectRatio(
-                aspectRatio: 1 / 2,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(device.imageUrl, fit: BoxFit.cover),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '${device.name} (${device.id})',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Text('Latest OCR: ${device.ocrValue}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _statusBox('CPU', device.cpu, statusColor(device.cpu, 'cpu'), '%'),
-                  const SizedBox(width: 10),
-                  _statusBox('BAT', device.battery, statusColor(device.battery, 'battery'), '%'),
-                  const SizedBox(width: 10),
-                  _statusBox('TEMP', device.temperature, statusColor(device.temperature, 'temp'), '°C'),
-                ],
-              ),
-              const SizedBox(height: 19),
-              const Text('Past telemetry (latest 5)', style: TextStyle(fontWeight: FontWeight.w500)),
-              ...device.pastTelemetry.reversed.map((tele) =>
-                  ListTile(
-                    dense: true,
-                    leading: Icon(Icons.timeline, color: Colors.blue.shade800, size: 22),
-                    title: Text('${tele.timestamp.hour}:${tele.timestamp.minute.toString().padLeft(2, '0')}'),
-                    subtitle: Text('OCR: ${tele.ocrValue} | CPU: ${tele.cpu.toStringAsFixed(1)}% | BAT: ${tele.battery.toStringAsFixed(1)}% | TEMP: ${tele.temperature.toStringAsFixed(1)}°C'),
-                  )
-              )
-            ],
+                const SizedBox(height: 13),
+                AspectRatio(
+                  aspectRatio: 1 / 2,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(device.imageUrl, fit: BoxFit.cover),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text('Latest OCR: ${device.ocrValue}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _statusBox('CPU', device.cpu, statusColor(device.cpu, 'cpu'), '%'),
+                    const SizedBox(width: 10),
+                    _statusBox('BAT', device.battery, statusColor(device.battery, 'battery'), '%'),
+                    const SizedBox(width: 10),
+                    _statusBox('TEMP', device.temperature, statusColor(device.temperature, 'temp'), '°C'),
+                  ],
+                ),
+                const SizedBox(height: 19),
+                const Text('Past telemetry (latest 5)', style: TextStyle(fontWeight: FontWeight.w500)),
+                SizedBox(
+                  height: 180,
+                  child: ListView(
+                    children: device.pastTelemetry.reversed
+                        .map((tele) => ListTile(
+                              dense: true,
+                              leading: Icon(Icons.timeline, color: Colors.blue.shade800, size: 22),
+                              title: Text('${tele.timestamp.hour}:${tele.timestamp.minute.toString().padLeft(2, '0')}'),
+                              subtitle: Text(
+                                  'OCR: ${tele.ocrValue} | CPU: ${tele.cpu.toStringAsFixed(1)}% | BAT: ${tele.battery.toStringAsFixed(1)}% | TEMP: ${tele.temperature.toStringAsFixed(1)}°C'),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -211,6 +228,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _statusBox(String label, double value, Color color, String suffix) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(Icons.fiber_manual_record, color: color, size: 14),
         const SizedBox(width: 2),
@@ -222,6 +240,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _sortDevices(int columnIndex, bool asc) {
+    setState(() {
+      _sortColumnIndex = columnIndex;
+      _sortAsc = asc;
+      Comparator<Device>? cmp;
+      switch (columnIndex) {
+        case 1: // OCR Value
+          cmp = (a, b) => a.ocrValue.compareTo(b.ocrValue);
+          break;
+        case 2: // CPU
+          cmp = (a, b) => a.cpu.compareTo(b.cpu);
+          break;
+        case 3: // Battery
+          cmp = (a, b) => a.battery.compareTo(b.battery);
+          break;
+        case 4: // Temperature
+          cmp = (a, b) => a.temperature.compareTo(b.temperature);
+          break;
+        default:
+          return;
+      }
+      if (cmp != null) {
+        _devices.sort((a, b) => asc ? cmp!(a, b) : cmp!(b, a));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -231,82 +276,167 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: Colors.blue.shade50,
       ),
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
         child: Column(
           children: [
-            TextField(
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: "Search by device name or ID",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                isDense: true,
-                fillColor: Colors.grey.shade50,
-                filled: true,
-              ),
-              onChanged: (v) => setState(() => _search = v),
-            ),
-            const SizedBox(height: 18),
-            Expanded(
-              child: GridView.builder(
-                itemCount: filteredDevices.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 18,
-                  crossAxisSpacing: 18,
-                  childAspectRatio: 0.74,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              child: TextField(
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: "Search by device name or ID",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                  fillColor: Colors.grey.shade50,
+                  filled: true,
                 ),
-                itemBuilder: (_, idx) {
-                  final device = filteredDevices[idx];
-                  return InkWell(
-                    onTap: () => _showDetail(device),
-                    borderRadius: BorderRadius.circular(18),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 600),
-                      curve: Curves.easeInOut,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.blueGrey.withOpacity(0.10),
-                              blurRadius: 9,
-                              offset: const Offset(2, 2))
-                        ],
-                        border: Border.all(
-                            color: Colors.blue[100]!, width: 1.2),
-                      ),
-                      padding: const EdgeInsets.all(10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.network(device.imageUrl, fit: BoxFit.cover),
+                onChanged: (v) => setState(() => _search = v),
+              ),
+            ),
+            const SizedBox(height: 7),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: 950,
+                  child: SingleChildScrollView(
+                    child: DataTable(
+                      columnSpacing: 18,
+                      sortColumnIndex: _sortColumnIndex,
+                      sortAscending: _sortAsc,
+                      columns: [
+                        const DataColumn(label: Text('Image')),
+                        DataColumn(
+                          label: Row(
+                            children: const [
+                              Text('OCR Value'),
+                              Icon(Icons.sort, size: 14, color: Colors.grey),
+                            ],
+                          ),
+                          onSort: (i, asc) => _sortDevices(i, asc),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: const [
+                              Text('CPU (%)'),
+                              Icon(Icons.sort, size: 14, color: Colors.grey),
+                            ],
+                          ),
+                          numeric: true,
+                          onSort: (i, asc) => _sortDevices(i, asc),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: const [
+                              Text('Battery (%)'),
+                              Icon(Icons.sort, size: 14, color: Colors.grey),
+                            ],
+                          ),
+                          numeric: true,
+                          onSort: (i, asc) => _sortDevices(i, asc),
+                        ),
+                        DataColumn(
+                          label: Row(
+                            children: const [
+                              Text('Temp (°C)'),
+                              Icon(Icons.sort, size: 14, color: Colors.grey),
+                            ],
+                          ),
+                          numeric: true,
+                          onSort: (i, asc) => _sortDevices(i, asc),
+                        ),
+                        const DataColumn(label: Text('Identifier')),
+                      ],
+                      rows: filteredDevices.map((device) {
+                        return DataRow(
+                          cells: [
+                            DataCell(
+                              GestureDetector(
+                                onTap: () => _showDetail(device),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(7),
+                                  child: Image.network(device.imageUrl, width: 46, height: 70, fit: BoxFit.cover),
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            '${device.name} (${device.id})',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text('OCR: ${device.ocrValue}',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Colors.black87)),
-                          const SizedBox(height: 8),
-                          _statusBox('CPU', device.cpu, statusColor(device.cpu, 'cpu'), '%'),
-                          const SizedBox(height: 3),
-                          _statusBox('BAT', device.battery, statusColor(device.battery, 'battery'), '%'),
-                          const SizedBox(height: 3),
-                          _statusBox('TEMP', device.temperature, statusColor(device.temperature, 'temp'), '°C'),
-                        ],
-                      ),
+                            DataCell(Text(device.ocrValue)),
+                            DataCell(
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: statusColor(device.cpu, 'cpu').withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.memory,
+                                      size: 15,
+                                      color: statusColor(device.cpu, 'cpu'),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text('${device.cpu.toStringAsFixed(1)}%'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: statusColor(device.battery, 'battery').withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      device.battery > 75
+                                          ? Icons.battery_full
+                                          : device.battery > 45
+                                              ? Icons.battery_5_bar
+                                              : device.battery > 15
+                                                  ? Icons.battery_2_bar
+                                                  : Icons.battery_alert,
+                                      size: 15,
+                                      color: statusColor(device.battery, 'battery'),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text('${device.battery.toStringAsFixed(1)}%'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: statusColor(device.temperature, 'temp').withOpacity(0.13),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.thermostat,
+                                      size: 15,
+                                      color: statusColor(device.temperature, 'temp'),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text('${device.temperature.toStringAsFixed(1)}°C'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            DataCell(Text(device.id)),
+                          ],
+                          onSelectChanged: (_) => _showDetail(device),
+                        );
+                      }).toList(),
                     ),
-                  );
-                },
+                  ),
+                ),
               ),
             ),
           ],
